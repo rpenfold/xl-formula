@@ -19,6 +19,8 @@ export function PlaygroundPage() {
   const [savedFormulas, setSavedFormulas] = useState([])
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saveFormulaName, setSaveFormulaName] = useState('')
+  const [showDiagram, setShowDiagram] = useState(false)
+  const [diagramSrc, setDiagramSrc] = useState('')
 
   // Load saved formulas from localStorage
   useEffect(() => {
@@ -229,6 +231,72 @@ export function PlaygroundPage() {
     // Don't auto-save examples
   }
 
+  const buildMermaidFromTrace = (trace) => {
+    // Build a Mermaid flowchart graph from the trace tree
+    // Use top-down nodes with ids trace.id
+    const lines = ['flowchart TD']
+
+    const nodeLabel = (n) => {
+      // Prefer concise labels; include value for leaves
+      const valueText = (() => {
+        const val = n.value
+        if (!val) return ''
+        try {
+          if (val.isError && val.isError()) return ` ${val.getErrorText()}`
+          if (val.isNumber && val.isNumber()) return ` ${val.asNumber()}`
+          if (val.isBoolean && val.isBoolean()) return ` ${val.asBoolean() ? 'TRUE' : 'FALSE'}`
+          const txt = val.asText?.()
+          if (typeof txt === 'string' && txt.length <= 12) return ` \"${txt}\"`
+        } catch {}
+        return ''
+      })()
+      return `${n.kind}:${n.label}${valueText}`
+    }
+
+    const visit = (n) => {
+      const nodeId = `n${n.id}`
+      const label = nodeLabel(n).replace(/"/g, '\\"')
+      lines.push(`${nodeId}["${label}"]`)
+      if (n.children && n.children.length) {
+        for (const c of n.children) {
+          const childId = `n${c.id}`
+          visit(c)
+          lines.push(`${nodeId} --> ${childId}`)
+        }
+      }
+    }
+
+    visit(trace)
+    return lines.join('\n')
+  }
+
+  const generateDiagram = async () => {
+    if (!engine) return
+    try {
+      const { result, trace } = engine.evaluateWithTrace(formula)
+      if (!trace) {
+        setDiagramSrc('')
+        return
+      }
+      const src = buildMermaidFromTrace(trace)
+      setDiagramSrc(src)
+      // Lazy load mermaid and render via data-attr; mermaid will auto-render in useEffect below
+      const { default: mermaid } = await import('mermaid')
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'neutral' })
+      // Force re-render by next tick after state set
+      setTimeout(() => {
+        try {
+          mermaid.init(undefined, '.mermaid')
+        } catch (e) {
+          console.warn('Mermaid init failed:', e)
+        }
+      }, 0)
+    } catch (e) {
+      console.error('Diagram generation failed', e)
+      setDiagramSrc('')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="container" style={{ padding: '4rem 0', textAlign: 'center' }}>
@@ -265,6 +333,19 @@ export function PlaygroundPage() {
           >
             Save
           </button>
+          <button
+            onClick={() => {
+              setShowDiagram(v => !v)
+              if (!showDiagram) {
+                // When opening, generate immediately
+                setTimeout(() => generateDiagram(), 0)
+              }
+            }}
+            className="btn btn-sm"
+            style={{ minWidth: '140px' }}
+          >
+            {showDiagram ? 'Hide Diagram' : 'Show Diagram'}
+          </button>
         </div>
         {/* Result with Performance */}
         <div className="p-4 rounded" style={{ 
@@ -290,6 +371,20 @@ export function PlaygroundPage() {
           </div>
         </div>
       </div>
+      {showDiagram && (
+        <div className="card mb-6">
+          <div className="flex justify-between items-center mb-3" style={{ flexWrap: 'wrap' }}>
+            <h3 className="font-semibold">Formula Evaluation Diagram</h3>
+            <div className="flex gap-2">
+              <button onClick={generateDiagram} className="btn btn-sm">Regenerate</button>
+            </div>
+          </div>
+          <p className="text-sm text-muted">Visual breakdown of the formula into sub-expressions. Useful for troubleshooting complex formulas.</p>
+          <div className="mermaid" style={{ overflowX: 'auto' }}>
+            {diagramSrc ? diagramSrc : 'No diagram available'}
+          </div>
+        </div>
+      )}
       {/* Saved Formulas */}
       {savedFormulas.length > 0 && (
         <div className="card mb-6">
@@ -500,38 +595,20 @@ export function PlaygroundPage() {
                 </div>
               </div>
             )}
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => {
-                  setShowSaveDialog(false)
-                  setSaveFormulaName('')
-                }}
-                style={{
-                  padding: '8px 16px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer',
-                  minWidth: '80px'
-                }}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button 
+                onClick={() => setShowSaveDialog(false)} 
+                className="btn btn-sm"
+                style={{ backgroundColor: '#eee' }}
               >
                 Cancel
               </button>
-              <button
+              <button 
                 onClick={() => {
-                  saveFormula(formula, saveFormulaName.trim() || null)
+                  saveFormula(formula, saveFormulaName)
                   setShowSaveDialog(false)
-                  setSaveFormulaName('')
-                }}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#007bff',
-                  color: 'white',
-                  cursor: 'pointer',
-                  minWidth: '80px'
-                }}
+                }} 
+                className="btn btn-sm btn-primary"
               >
                 Save
               </button>

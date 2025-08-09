@@ -3,6 +3,8 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <vector>
+#include <string>
 #include "ast.h"
 #include "types.h"
 
@@ -100,6 +102,17 @@ class EvaluationResult {
 };
 
 /**
+ * @brief Trace node for evaluation visualization (built only when explicitly requested)
+ */
+struct TraceNode {
+    int id;
+    std::string kind;   // Literal, Variable, BinaryOp, UnaryOp, Array, FunctionCall
+    std::string label;  // e.g., operator symbol, function name, variable name, literal text
+    Value value;        // computed value for this node
+    std::vector<std::unique_ptr<TraceNode>> children;
+};
+
+/**
  * @brief AST evaluator using visitor pattern
  */
 class Evaluator : public ASTVisitor {
@@ -109,8 +122,18 @@ class Evaluator : public ASTVisitor {
     Value result_;
     std::vector<std::string> warnings_;
 
+    // Trace state (enabled only for evaluateWithTrace)
+    bool tracing_enabled_ = false;
+    int next_trace_id_ = 0;
+    std::vector<TraceNode*> trace_stack_;
+    std::unique_ptr<TraceNode> trace_root_;
+
     Value performBinaryOperation(BinaryOpNode::Operator op, const Value& left, const Value& right);
     Value performUnaryOperation(UnaryOpNode::Operator op, const Value& operand);
+
+    // Helper to create and push a trace node
+    TraceNode* beginTraceNode(const std::string& kind, const std::string& label);
+    void endTraceNode(TraceNode* node, const Value& value);
 
   public:
     /**
@@ -126,6 +149,14 @@ class Evaluator : public ASTVisitor {
      * @return Evaluation result
      */
     EvaluationResult evaluate(const ASTNode& node);
+
+    /**
+     * @brief Evaluate an AST node and build a trace tree for visualization
+     * @param node AST node to evaluate
+     * @param out_trace_root Output unique_ptr for the trace root node
+     * @return Evaluation result
+     */
+    EvaluationResult evaluateWithTrace(const ASTNode& node, std::unique_ptr<TraceNode>& out_trace_root);
 
     // Visitor pattern implementation
     void visit(const LiteralNode& node) override;
@@ -164,6 +195,14 @@ class FormulaEngine {
      * @return Evaluation result
      */
     EvaluationResult evaluate(const ASTNode& ast);
+
+    /**
+     * @brief Evaluate and produce a trace tree for visualization
+     * @param formula Formula text to evaluate
+     * @param out_trace_root Output unique_ptr for the trace root node
+     * @return Evaluation result
+     */
+    EvaluationResult evaluateWithTrace(const std::string& formula, std::unique_ptr<TraceNode>& out_trace_root);
 
     /**
      * @brief Get the evaluation context

@@ -26,6 +26,19 @@ EvaluationResult FormulaEngine::evaluate(const ASTNode& ast) {
     return evaluator.evaluate(ast);
 }
 
+EvaluationResult FormulaEngine::evaluateWithTrace(const std::string& formula, std::unique_ptr<TraceNode>& out_trace_root) {
+    Parser parser;
+    auto parse_result = parser.parse(formula);
+
+    if (!parse_result.isSuccess()) {
+        out_trace_root.reset();
+        return EvaluationResult::error(ErrorType::PARSE_ERROR);
+    }
+
+    Evaluator evaluator(context_, function_registry_.get());
+    return evaluator.evaluateWithTrace(*parse_result.getAST(), out_trace_root);
+}
+
 void FormulaEngine::setVariable(const std::string& name, const Value& value) {
     context_.setVariable(name, value);
 }

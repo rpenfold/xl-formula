@@ -108,6 +108,30 @@ public:
 };
 
 /**
+ * @brief JavaScript-friendly representation of TraceNode
+ */
+struct JSTraceNode {
+    int id;
+    std::string kind;
+    std::string label;
+    JSValue value; // Use JSValue wrapper
+    std::vector<JSTraceNode> children;
+};
+
+static JSTraceNode convertTraceNode(const TraceNode& n) {
+    JSTraceNode jn;
+    jn.id = n.id;
+    jn.kind = n.kind;
+    jn.label = n.label;
+    jn.value = JSValue(n.value);
+    jn.children.reserve(n.children.size());
+    for (const auto& child : n.children) {
+        jn.children.push_back(convertTraceNode(*child));
+    }
+    return jn;
+}
+
+/**
  * @brief JavaScript-friendly wrapper for evaluation results
  */
 class JSEvaluationResult {
@@ -203,8 +227,19 @@ public:
         return JSEvaluationResult(engine_.evaluate(formula));
     }
 
-    // Quick evaluation functions for convenience
-
+    // Trace-enabled evaluation for tooling
+    val evaluateWithTrace(const std::string& formula) {
+        std::unique_ptr<TraceNode> trace_root;
+        auto result = engine_.evaluateWithTrace(formula, trace_root);
+        val jsObj = val::object();
+        jsObj.set("result", JSEvaluationResult(result));
+        if (trace_root) {
+            jsObj.set("trace", val(convertTraceNode(*trace_root)));
+        } else {
+            jsObj.set("trace", val::undefined());
+        }
+        return jsObj;
+    }
 };
 
 /**
@@ -242,6 +277,15 @@ EMSCRIPTEN_BINDINGS(xl_formula) {
         .function("getErrorText", &JSValue::getErrorText)
         .function("getTypeName", &JSValue::getTypeName);
 
+    // Bind JSTraceNode and vector
+    value_object<JSTraceNode>("TraceNode")
+        .field("id", &JSTraceNode::id)
+        .field("kind", &JSTraceNode::kind)
+        .field("label", &JSTraceNode::label)
+        .field("value", &JSTraceNode::value)
+        .field("children", &JSTraceNode::children);
+    register_vector<JSTraceNode>("TraceNodeVector");
+
     // JSEvaluationResult class
     class_<JSEvaluationResult>("EvaluationResult")
         .function("isSuccess", &JSEvaluationResult::isSuccess)
@@ -261,7 +305,8 @@ EMSCRIPTEN_BINDINGS(xl_formula) {
         .function("hasVariable", &JSFormulaEngine::hasVariable)
         .function("removeVariable", &JSFormulaEngine::removeVariable)
         .function("clearVariables", &JSFormulaEngine::clearVariables)
-        .function("evaluate", &JSFormulaEngine::evaluate);
+        .function("evaluate", &JSFormulaEngine::evaluate)
+        .function("evaluateWithTrace", &JSFormulaEngine::evaluateWithTrace);
 
     // Standalone functions
     function("evaluate", &quickEvaluate);

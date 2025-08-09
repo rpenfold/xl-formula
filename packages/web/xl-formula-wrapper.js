@@ -174,6 +174,21 @@ class FormulaEngine {
     evaluate(formula) {
         return new EvaluationResult(this._engine.evaluate(normalizeFormula(formula)));
     }
+
+    // Tooling-only: evaluate with trace for visualization
+    evaluateWithTrace(formula) {
+        try {
+            if (typeof this._engine.evaluateWithTrace === 'function') {
+                const obj = this._engine.evaluateWithTrace(normalizeFormula(formula));
+                const result = new EvaluationResult(obj.result);
+                const trace = obj.trace || null;
+                return { result, trace };
+            }
+        } catch {}
+        // Fallback for builds without trace support
+        const fallback = this._engine.evaluate(normalizeFormula(formula));
+        return { result: new EvaluationResult(fallback), trace: null };
+    }
 }
 
 /**

@@ -81,6 +81,9 @@ Evaluator::Evaluator(const Context& context, const FunctionRegistry* function_re
 
 EvaluationResult Evaluator::evaluate(const ASTNode& node) {
     resetState();
+    tracing_enabled_ = false;
+    trace_stack_.clear();
+    trace_root_.reset();
 
     try {
         // Use const_cast to work around visitor pattern const issues
@@ -93,18 +96,69 @@ EvaluationResult Evaluator::evaluate(const ASTNode& node) {
     }
 }
 
+EvaluationResult Evaluator::evaluateWithTrace(const ASTNode& node, std::unique_ptr<TraceNode>& out_trace_root) {
+    resetState();
+    tracing_enabled_ = true;
+    next_trace_id_ = 0;
+    trace_stack_.clear();
+    trace_root_.reset();
+
+    try {
+        const_cast<ASTNode&>(node).accept(*this);
+        // hand over ownership of the trace tree
+        out_trace_root = std::move(trace_root_);
+        EvaluationResult result(result_, warnings_);
+        return result;
+    } catch (const std::exception&) {
+        out_trace_root.reset();
+        return EvaluationResult::error(ErrorType::VALUE_ERROR);
+    }
+}
+
+TraceNode* Evaluator::beginTraceNode(const std::string& kind, const std::string& label) {
+    if (!tracing_enabled_) return nullptr;
+    auto node = std::make_unique<TraceNode>();
+    node->id = next_trace_id_++;
+    node->kind = kind;
+    node->label = label;
+    node->value = Value::empty();
+
+    TraceNode* raw = node.get();
+    if (trace_stack_.empty()) {
+        trace_root_ = std::move(node);
+    } else {
+        trace_stack_.back()->children.push_back(std::move(node));
+    }
+    trace_stack_.push_back(raw);
+    return raw;
+}
+
+void Evaluator::endTraceNode(TraceNode* node, const Value& value) {
+    if (!tracing_enabled_ || trace_stack_.empty()) return;
+    node->value = value;
+    // Pop if this node is at the top
+    if (trace_stack_.back() == node) {
+        trace_stack_.pop_back();
+    }
+}
+
 void Evaluator::visit(const LiteralNode& node) {
+    TraceNode* t = beginTraceNode("Literal", node.getValue().toString());
     result_ = node.getValue();
+    if (t) endTraceNode(t, result_);
 }
 
 void Evaluator::visit(const VariableNode& node) {
+    TraceNode* t = beginTraceNode("Variable", node.getName());
     result_ = context_->getVariable(node.getName());
     if (result_.isEmpty()) {
         result_ = Value::error(ErrorType::NAME_ERROR);
     }
+    if (t) endTraceNode(t, result_);
 }
 
 void Evaluator::visit(const BinaryOpNode& node) {
+    TraceNode* t = beginTraceNode("BinaryOp", BinaryOpNode::operatorToString(node.getOperator()));
     // Evaluate left operand
     const_cast<ASTNode&>(node.getLeft()).accept(*this);
     Value left = result_;
@@ -114,16 +168,21 @@ void Evaluator::visit(const BinaryOpNode& node) {
     Value right = result_;
 
     result_ = performBinaryOperation(node.getOperator(), left, right);
+    if (t) endTraceNode(t, result_);
 }
 
 void Evaluator::visit(const UnaryOpNode& node) {
+    std::string op = (node.getOperator() == UnaryOpNode::Operator::PLUS) ? "+" : "-";
+    TraceNode* t = beginTraceNode("UnaryOp", op);
     const_cast<ASTNode&>(node.getOperand()).accept(*this);
     Value operand = result_;
 
     result_ = performUnaryOperation(node.getOperator(), operand);
+    if (t) endTraceNode(t, result_);
 }
 
 void Evaluator::visit(const ArrayNode& node) {
+    TraceNode* t = beginTraceNode("Array", "[ ]");
     // Arrays evaluate to a special array Value type
     // For now, we'll evaluate all elements and store them in a vector
     // This will be used by financial functions like IRR, NPV, MIRR
@@ -137,9 +196,11 @@ void Evaluator::visit(const ArrayNode& node) {
 
     // Create an array Value - we need to add this to the Value class
     result_ = Value::array(elements);
+    if (t) endTraceNode(t, result_);
 }
 
 void Evaluator::visit(const FunctionCallNode& node) {
+    TraceNode* t = beginTraceNode("FunctionCall", node.getName());
     std::vector<Value> args;
     args.reserve(node.getArguments().size());
 
@@ -151,6 +212,7 @@ void Evaluator::visit(const FunctionCallNode& node) {
 
     // Call function
     result_ = function_registry_->callFunction(node.getName(), args, *context_);
+    if (t) endTraceNode(t, result_);
 }
 
 Value Evaluator::performBinaryOperation(BinaryOpNode::Operator op, const Value& left,
