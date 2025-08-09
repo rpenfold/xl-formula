@@ -48,7 +48,9 @@ export function BenchmarkDiagnostic({ formula = 'SUM(1,2,3,4,5)', compact = fals
               XLFormulaModule.default.evaluate(cleanFormula)
             }
             const xlTime = performance.now() - start
-            diagnostic.xlPerformance = `${xlTime.toFixed(2)}ms for ${iterations} iterations`
+            const xlAvgUs = (xlTime / iterations) * 1000
+            const xlOpsPerSec = xlTime > 0 ? (iterations / (xlTime / 1000)) : null
+            diagnostic.xlPerformance = `${xlTime.toFixed(3)}ms for ${iterations} iterations (${xlAvgUs.toFixed(3)} µs/iter${xlOpsPerSec ? `, ${Math.round(xlOpsPerSec).toLocaleString()} ops/s` : ''})`
           } else {
             diagnostic.calcTest = `failed: ${result.getErrorMessage()}`
             diagnostic.xlPerformance = 'Skipped (invalid formula)'
@@ -82,7 +84,9 @@ export function BenchmarkDiagnostic({ formula = 'SUM(1,2,3,4,5)', compact = fals
             parser.parse(cleanFormula)
           }
           const hfpTime = performance.now() - start
-          diagnostic.hotFormulaParserPerformance = `${hfpTime.toFixed(2)}ms for ${iterations} iterations`
+          const hfpAvgUs = (hfpTime / iterations) * 1000
+          const hfpOpsPerSec = hfpTime > 0 ? (iterations / (hfpTime / 1000)) : null
+          diagnostic.hotFormulaParserPerformance = `${hfpTime.toFixed(3)}ms for ${iterations} iterations (${hfpAvgUs.toFixed(3)} µs/iter${hfpOpsPerSec ? `, ${Math.round(hfpOpsPerSec).toLocaleString()} ops/s` : ''})`
         }
       } catch (error) {
         diagnostic.hotFormulaParserError = error.toString()
@@ -137,7 +141,7 @@ export function BenchmarkDiagnostic({ formula = 'SUM(1,2,3,4,5)', compact = fals
                       const speedup = hfpTime / xlTime
                       return (
                         <>
-                          <div>XL Formula: {xlTime}ms • Hot Formula Parser: {hfpTime}ms ({iterations} iterations)</div>
+                          <div>XL Formula: {xlTime.toFixed(3)}ms • Hot Formula Parser: {hfpTime.toFixed(3)}ms ({iterations} iterations)</div>
                           <div className={speedup > 1 ? "text-success" : "text-error"}>
                             {speedup > 1 ? `${speedup.toFixed(1)}x faster` : `${(1/speedup).toFixed(1)}x slower`}
                           </div>

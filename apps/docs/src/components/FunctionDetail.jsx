@@ -154,6 +154,15 @@ export function FunctionDetail({ func, category, categoryName }) {
         console.warn('Hot-formula-parser benchmark failed:', error)
       }
 
+      // Compute per-iteration averages and throughput
+      const xlAvgMs = xlTime / iterations
+      const xlAvgUs = xlAvgMs * 1000
+      const xlOpsPerSec = xlTime > 0 ? (iterations / (xlTime / 1000)) : null
+
+      const hfpAvgMs = hotFormulaTime != null ? (hotFormulaTime / iterations) : null
+      const hfpAvgUs = hfpAvgMs != null ? (hfpAvgMs * 1000) : null
+      const hfpOpsPerSec = hotFormulaTime > 0 ? (iterations / (hotFormulaTime / 1000)) : null
+
       // Verify results match (handle different data types)
       let resultsMatch = false
       if (hotFormulaResult !== null) {
@@ -175,7 +184,12 @@ export function FunctionDetail({ func, category, categoryName }) {
         speedup: hotFormulaTime ? (hotFormulaTime / xlTime).toFixed(2) : null,
         xlResult,
         hotFormulaResult,
-        resultsMatch: hotFormulaResult !== null ? resultsMatch : null
+        resultsMatch: hotFormulaResult !== null ? resultsMatch : null,
+        // Added precision metrics
+        xlAvgUs,
+        xlOpsPerSec,
+        hfpAvgUs,
+        hfpOpsPerSec,
       })
     } catch (error) {
       console.error('Benchmark failed:', error)
@@ -332,14 +346,32 @@ export function FunctionDetail({ func, category, categoryName }) {
                     <div className="flex justify-between">
                       <span>XL Formula:</span>
                       <span className="font-mono">
-                        {benchmarkResults.xlFormula ? `${benchmarkResults.xlFormula.toFixed(2)}ms` : 'N/A'}
+                        {benchmarkResults.xlFormula ? `${benchmarkResults.xlFormula.toFixed(3)}ms` : 'N/A'}
+                        {benchmarkResults.xlAvgUs != null && (
+                          <>
+                            {` (`}
+                            {`${benchmarkResults.xlAvgUs.toFixed(3)} µs/iter`}
+                            {benchmarkResults.xlOpsPerSec ? `, ${Math.round(benchmarkResults.xlOpsPerSec).toLocaleString()} ops/s` : ''}
+                            {`)`}
+                          </>
+                        )}
                       </span>
                     </div>
                     {benchmarkResults.hotFormulaParser && (
                       <>
                         <div className="flex justify-between">
                           <span>Hot Formula Parser:</span>
-                          <span className="font-mono">{benchmarkResults.hotFormulaParser.toFixed(2)}ms</span>
+                          <span className="font-mono">
+                            {benchmarkResults.hotFormulaParser.toFixed(3)}ms
+                            {benchmarkResults.hfpAvgUs != null && (
+                              <>
+                                {` (`}
+                                {`${benchmarkResults.hfpAvgUs.toFixed(3)} µs/iter`}
+                                {benchmarkResults.hfpOpsPerSec ? `, ${Math.round(benchmarkResults.hfpOpsPerSec).toLocaleString()} ops/s` : ''}
+                                {`)`}
+                              </>
+                            )}
+                          </span>
                         </div>
                         <div className="flex justify-between font-semibold">
                           <span>Speedup:</span>
