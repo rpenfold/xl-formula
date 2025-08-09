@@ -50,6 +50,14 @@ export function DocsPage({ category, function: functionName }) {
   const filteredFunctions = getFilteredFunctions()
 
   if (selectedFunction && currentFunction) {
+    const handleMobileBack = () => {
+      if (window.history.length > 1) {
+        window.history.back()
+      } else {
+        route(`${basePath}docs/${selectedCategory}`)
+      }
+    }
+
     return (
       <div className="container" style={{ padding: '2rem 0' }}>
         <div className="mb-6">
@@ -70,6 +78,14 @@ export function DocsPage({ category, function: functionName }) {
             <span>→</span>
             <span>{currentFunction.name}</span>
           </nav>
+          <button 
+            className="btn btn-sm show-mobile" 
+            style={{ display: 'none', marginTop: '0.5rem' }} 
+            aria-label="Go back"
+            onClick={handleMobileBack}
+          >
+            ← Back
+          </button>
         </div>
         
         <FunctionDetail 
